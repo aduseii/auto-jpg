@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Auto JPG",
+  "version": "1.2.0",
+  "description": "WebP pictures you download are saved as JPG, so \"Open file\" in your downloads opens the JPG. Keeps itself up to date.",
+  "homepage_url": "https://github.com/aduseii/auto-jpg",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA65cVUl6U1Qpd2cnk+e45Yxml/P9vb48sw8XBTIZH3zuzIy3vmyxk5vVBl23QQe+8Led1ISSZ8vBxC+JlNvfaWv/M/FMO6wU7cy8tXeTxr0MG4+85Yv2losJ8SaKSPA446sDJPSJXdwiu5nMWbnvZlRhZJ4I/vDW9bt+rUc/C+SaAWUK5/7RBJzmEd+NfIC9ZY8zyL18UtMZ1/s4f+iwvqbCcgdL8WzBQAezk3FBO0faH+zHO9FjoNet3lo10nJT8rgP7hciQDMx12w0fMTwpKBb00hq9JDSzYrpLyYcL9oVE1iSVLtIGdJFTZ+osBLW+PwstwVMpts58b924cil0eQIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "downloads",
+    "offscreen",
+    "storage",
+    "alarms",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Auto JPG",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Auto JPG</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img class="logo" src="../icons/icon48.png" alt="" width="30" height="30">
+    <div>
+      <h1>Auto JPG</h1>
+      <p class="sub">WebP downloads are saved as JPG</p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Updates</h2>
+    <label class="row">
+      <span class="text">
+        <span class="name">Update automatically</span>
+        <span class="hint" id="updateStatus">Version <span id="version"></span></span>
+      </span>
+      <input type="checkbox" class="switch" id="autoUpdate">
+    </label>
+    <div class="update-actions">
+      <button type="button" class="link" id="checkNow">Check for updates</button>
+      <a class="link" id="setupLink" href="https://github.com/aduseii/auto-jpg#turn-on-auto-update" target="_blank" rel="noopener" hidden>How to turn it on</a>
+    </div>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>
