@@ -1,10 +1,15 @@
-// Auto JPG — saves every downloaded WebP picture as a JPG.
+// Auto JPG — saves downloaded pictures that Windows Photos can't save edits to as JPG.
+//
+// The Windows 11 Photos app can only save edits back into JPG, PNG, BMP, TIFF and
+// JPEG XR files. Pictures in other formats it opens (WebP, AVIF, HEIC/HEIF, GIF)
+// can only be saved as a copy after editing. So Auto JPG turns those into JPGs.
 //
 // How it works: as soon as the browser knows where a download is going, Auto JPG
-// checks whether it's a WebP picture. If so it makes a JPG copy, saves that copy in
-// the same place under the same name, then removes the WebP from your disk and
-// from the downloads list. So the downloads list — and "Open file" — point at the JPG.
-// Every other kind of file (PNG, GIF, JPG, videos...) is left exactly as it is.
+// checks whether it's one of those pictures. If so it makes a JPG copy, saves that
+// copy in the same place under the same name, then removes the original from your
+// disk and from the downloads list. So the downloads list — and "Open file" —
+// point at the JPG. Everything else (JPG, PNG, BMP, TIFF, videos...) is left as it is,
+// and so are animated GIFs/WebPs (a JPG can't move).
 // If anything goes wrong, the original download is simply left alone.
 //
 // (It deliberately does NOT use chrome.downloads.onDeterminingFilename: in Chrome,
@@ -24,12 +29,29 @@ function relativeToDownloads(fullPath) {
   return i >= 0 && i < parts.length - 1 ? parts.slice(i + 1).join("/") : null;
 }
 
-// WebP only: a file served as WebP (even if it's named .jpg) or named .webp.
+// The picture types Windows Photos can open but can't save edits to.
+// Matched by what the site says the file is (even if it's named .jpg) or by its name.
+const CONVERT_MIME = new Set([
+  "image/webp", "image/avif", "image/gif",
+  "image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence",
+]);
+const CONVERT_EXT = new Set(["webp", "avif", "gif", "heic", "heif", "hif"]);
+
+const SNIFFED_TYPES = new Set(["image/webp", "image/avif", "image/gif", "image/heic"]);
+
 function needsJpg(item) {
   const ext = extOf(baseName(item.filename));
   const mime = (item.mime || "").split(";")[0].trim().toLowerCase();
   if (mime.startsWith("video/") || mime.startsWith("text/")) return false;
-  return mime === "image/webp" || ext === "webp";
+  return CONVERT_MIME.has(mime) || CONVERT_EXT.has(ext);
+}
+
+// Says it's a JPG. Sites (and the browser, when a page names the file .jpg) sometimes
+// label a WebP or AVIF that way, so these get a quick look at their first bytes.
+function claimsJpeg(item) {
+  const ext = extOf(baseName(item.filename));
+  const mime = (item.mime || "").split(";")[0].trim().toLowerCase();
+  return mime === "image/jpeg" || mime === "image/jpg" || ext === "jpg" || ext === "jpeg";
 }
 
 chrome.downloads.onCreated.addListener((item) => {
@@ -45,10 +67,17 @@ chrome.downloads.onChanged.addListener((delta) => {
 async function consider(id) {
   if (handling.has(id)) return;
   const [item] = await chrome.downloads.search({ id });
-  if (!item || !item.filename || item.byExtensionId === chrome.runtime.id || !needsJpg(item)) return;
+  if (!item || !item.filename || item.byExtensionId === chrome.runtime.id) return;
+  const convert = needsJpg(item);
+  if (!convert && !claimsJpeg(item)) return;
   handling.add(id);
   busy++;
   try {
+    if (!convert) {
+      // a "JPG": only convert it if its first bytes show it's really a WebP/AVIF/HEIC/GIF
+      const peek = await askConverter({ type: "peek", url: item.finalUrl || item.url }).catch(() => null);
+      if (!SNIFFED_TYPES.has(peek?.type)) return;
+    }
     await replaceWithJpg(item);
   } catch (err) {
     console.warn("Auto JPG: couldn't convert", baseName(item.filename), err);

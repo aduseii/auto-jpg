@@ -1,6 +1,6 @@
 # Auto JPG
 
-A Chrome / Edge extension that saves every **WebP** picture you download as a **JPG**. The JPG is what shows up in your browser's downloads list, so **Open file** opens the JPG. Keeps itself up to date.
+A Chrome / Edge extension that saves the pictures you download in formats the **Windows 11 Photos app can't save edits to** (WebP, AVIF, HEIC/HEIF and GIF) as **JPG**. The JPG is what shows up in your browser's downloads list, so **Open file** opens the JPG, and you can edit and save it in Photos normally. Keeps itself up to date.
 
 ## Install (Chrome, Edge, Brave)
 
@@ -30,22 +30,35 @@ If you move the extension folder, run `Turn on auto-update.bat` again from the n
 
 ## What it does
 
-- **WebP → JPG.** Any download that is a WebP picture (named `.webp`, or a WebP that a site named `.jpg`) is saved as a real JPG with the same name, in the same folder. The WebP is removed from your disk and from the downloads list.
-- **Everything else is untouched:** PNG, GIF, JPG, `.jfif`, videos, documents.
-- **Transparent WebPs** get a white background (JPG can't be see-through).
-- **Animated WebPs** are left as WebP, so they keep moving.
+The Photos app in Windows 11 can save edits back into **JPG, PNG, BMP, TIFF and JPEG XR** files. Other pictures it opens can only be saved with **Save a copy** after editing. Auto JPG converts the ones you download from the web:
+
+| Type | What happens |
+|---|---|
+| **WebP** (`.webp`) | saved as JPG |
+| **AVIF** (`.avif`) | saved as JPG |
+| **HEIC / HEIF** (`.heic`, `.heif`, iPhone photos) | saved as JPG |
+| **GIF** (still) | saved as JPG |
+| GIF / WebP / AVIF that **move** | left as they are, so they keep moving |
+| JPG, PNG, BMP, TIFF, `.jfif`, videos, documents | left exactly as they are |
+
+- The JPG gets the same name, in the same folder. The original is removed from your disk and from the downloads list.
+- **Disguised files** are caught too: a WebP, AVIF or HEIC that a site named `.jpg` is checked (only its first few bytes are read) and converted. Real JPGs are never touched.
+- **Transparent pictures** get a white background (JPG can't be see-through).
 - **Works with other extensions,** such as Quick Image Saver: their pictures are converted too, and the file names and folders they choose are kept.
-- **If a site refuses** to hand the picture over a second time, the WebP download is left as it is.
+- **If a site refuses** to hand the picture over a second time, the original download is left as it is.
 - **"Save image as" outside Downloads:** the extension asks where to put the JPG.
 
-You may see the WebP in the downloads list for a moment before the JPG replaces it.
+You may see the original in the downloads list for a moment before the JPG replaces it.
+
+Not converted: camera RAW files (CR2, NEF, ARW, DNG…) and JPEG XL, which browsers can't read. Microsoft's new Photos app (rolling out to Windows Insiders in 2026) can save HEIC and WebP edits directly; once you have it, those two no longer need converting, but converting them does no harm.
 
 ## Files
 
 ```
 manifest.json      extension manifest (fixed key, so the ID never changes)
-background.js      spots WebP downloads, swaps in the JPG, checks for updates
+background.js      spots the picture downloads, swaps in the JPG, checks for updates
 offscreen.*        hidden page that does the converting
+lib/heic-to.js     HEIC decoder (heic-to 1.6.7 / libheif, LGPL-3.0, see lib/)
 popup/             toolbar popup (update status)
 icons/             icons
 updater/           auto-update helper (Windows PowerShell, started by the extension)

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Auto JPG",
-  "version": "1.2.0",
-  "description": "WebP pictures you download are saved as JPG, so \"Open file\" in your downloads opens the JPG. Keeps itself up to date.",
+  "version": "1.3.0",
+  "description": "Downloaded WebP, AVIF, HEIC and GIF pictures (types Windows Photos can't save edits to) are saved as JPG. Keeps itself up to date.",
   "homepage_url": "https://github.com/aduseii/auto-jpg",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA65cVUl6U1Qpd2cnk+e45Yxml/P9vb48sw8XBTIZH3zuzIy3vmyxk5vVBl23QQe+8Led1ISSZ8vBxC+JlNvfaWv/M/FMO6wU7cy8tXeTxr0MG4+85Yv2losJ8SaKSPA446sDJPSJXdwiu5nMWbnvZlRhZJ4I/vDW9bt+rUc/C+SaAWUK5/7RBJzmEd+NfIC9ZY8zyL18UtMZ1/s4f+iwvqbCcgdL8WzBQAezk3FBO0faH+zHO9FjoNet3lo10nJT8rgP7hciQDMx12w0fMTwpKBb00hq9JDSzYrpLyYcL9oVE1iSVLtIGdJFTZ+osBLW+PwstwVMpts58b924cil0eQIDAQAB",
   "minimum_chrome_version": "116",

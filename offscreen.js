@@ -1,4 +1,5 @@
 // Runs in a hidden page: downloads the picture, turns it into a JPG.
+// (HEIC is decoded with lib/heic-to.js, LGPL-3.0; everything else by the browser itself.)
 
 const JPG_QUALITY = 0.95;   // 0 to 1
 const SKIP_ANIMATED = true; // leave animated GIF/WebP/PNG alone (a JPG can't move)
@@ -9,7 +10,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     convert(msg.url).then(sendResponse, (e) => sendResponse({ ok: false, error: String(e) }));
     return true;
   }
+  if (msg.type === "peek") {
+    peek(msg.url).then((type) => sendResponse({ type }), () => sendResponse({ type: null }));
+    return true;
+  }
 });
+
+// Read just the first bytes of a file to see what it really is.
+async function peek(url) {
+  const res = await fetch(url, { credentials: "include", headers: { Range: "bytes=0-63" } });
+  if (!res.ok || !res.body) return null;
+  const reader = res.body.getReader();
+  const head = new Uint8Array(64);
+  let got = 0;
+  while (got < 64) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const take = Math.min(value.length, 64 - got);
+    head.set(value.subarray(0, take), got);
+    got += take;
+  }
+  reader.cancel().catch(() => {});
+  return sniff(head.subarray(0, got));
+}
 
 async function convert(url) {
   const res = await fetch(url, { credentials: "include" });
@@ -24,7 +47,14 @@ async function convert(url) {
   }
   if (SKIP_ANIMATED && (await isAnimated(buf, type))) return { ok: false, error: "animated" };
 
-  const bitmap = await createImageBitmap(new Blob([buf], { type }));
+  let bitmap;
+  if (type === "image/heic") {
+    // Browsers can't read HEIC themselves, so a decoder (lib/heic-to.js) is loaded when needed.
+    const { heicTo } = await import("./lib/heic-to.js");
+    bitmap = await heicTo({ blob: new Blob([buf], { type }), type: "bitmap" });
+  } else {
+    bitmap = await createImageBitmap(new Blob([buf], { type }));
+  }
   const canvas = document.createElement("canvas");
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
@@ -49,11 +79,12 @@ function sniff(b) {
   if (ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") return "image/webp";
   if (ascii(0, 2) === "BM") return "image/bmp";
   if (ascii(4, 4) === "ftyp" && /avi[fs]/.test(ascii(8, 24))) return "image/avif";
+  if (ascii(4, 4) === "ftyp" && /he(i[cxms]|v[cxms])|mif1|msf1/.test(ascii(8, 24))) return "image/heic";
   return null;
 }
 
 async function isAnimated(buf, type) {
-  if (type === "image/bmp" || !("ImageDecoder" in self)) return false;
+  if (type === "image/bmp" || type === "image/heic" || !("ImageDecoder" in self)) return false;
   try {
     const decoder = new ImageDecoder({ data: buf, type });
     await decoder.tracks.ready;
