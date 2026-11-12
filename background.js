@@ -4,18 +4,21 @@
 // JPEG XR files. Pictures in other formats it opens (WebP, AVIF, HEIC/HEIF, GIF)
 // can only be saved as a copy after editing. So Auto JPG turns those into JPGs.
 //
-// How it works: as soon as the browser knows where a download is going, Auto JPG
-// checks whether it's one of those pictures. If so it makes a JPG copy, saves that
-// copy in the same place under the same name, then removes the original from your
-// disk and from the downloads list. So the downloads list — and "Open file" —
-// point at the JPG. Everything else (JPG, PNG, BMP, TIFF, videos...) is left as it is,
-// and so are animated GIFs/WebPs (a JPG can't move).
-// If anything goes wrong, the original download is simply left alone.
+// How it works: when a download finishes, Auto JPG checks whether it's one of those
+// pictures. If so it makes a JPG copy, saves that copy in the same place under the
+// same name, then removes the original from your disk and from the downloads list.
+// So the downloads list — and "Open file" — point at the JPG. Everything else (JPG,
+// PNG, BMP, TIFF, videos...) is left as it is, and so are animated GIFs/WebPs/AVIFs
+// (a JPG can't move). If anything goes wrong, the original download is left alone.
+//
+// The picture is read from the file you downloaded (extensions loaded with "Load
+// unpacked" may read local files). Only if that's switched off does Auto JPG fetch
+// it from the site again, and some sites refuse that or send a different file.
 //
 // (It deliberately does NOT use chrome.downloads.onDeterminingFilename: in Chrome,
 // using that makes other extensions lose the file names they choose.)
 
-const handling = new Set(); // download ids being processed
+const handling = new Set(); // download ids being processed or already done
 let busy = 0;
 
 const baseName = (p) => (p || "").split(/[\\/]/).pop() || "image";
@@ -37,59 +40,112 @@ const CONVERT_MIME = new Set([
 ]);
 const CONVERT_EXT = new Set(["webp", "avif", "gif", "heic", "heif", "hif"]);
 
-const SNIFFED_TYPES = new Set(["image/webp", "image/avif", "image/gif", "image/heic"]);
+const mimeOf = (item) => (item.mime || "").split(";")[0].trim().toLowerCase();
 
 function needsJpg(item) {
   const ext = extOf(baseName(item.filename));
-  const mime = (item.mime || "").split(";")[0].trim().toLowerCase();
+  const mime = mimeOf(item);
   if (mime.startsWith("video/") || mime.startsWith("text/")) return false;
   return CONVERT_MIME.has(mime) || CONVERT_EXT.has(ext);
 }
 
-// Says it's a JPG. Sites (and the browser, when a page names the file .jpg) sometimes
-// label a WebP or AVIF that way, so these get a quick look at their first bytes.
-function claimsJpeg(item) {
+// Files that say they're a JPG or PNG, and files the site didn't name a type for.
+// Sites (and the browser, when a page names the file .jpg) often label an AVIF or WebP
+// that way, so these get a quick look at their first bytes. Real JPGs/PNGs are kept.
+const CLAIMED_EXT = new Set(["jpg", "jpeg", "jpe", "jfif", "png"]);
+const CLAIMED_MIME = new Set(["image/jpeg", "image/jpg", "image/pjpeg", "image/png"]);
+const UNNAMED_MIME = new Set(["", "application/octet-stream", "binary/octet-stream",
+                              "application/binary", "application/x-binary", "application/unknown"]);
+const UNNAMED_EXT = new Set(["", "bin", "dat", "tmp", "php", "asp", "aspx", "ashx", "jsp", "cgi", "image", "img"]);
+
+function worthALook(item) {
   const ext = extOf(baseName(item.filename));
-  const mime = (item.mime || "").split(";")[0].trim().toLowerCase();
-  return mime === "image/jpeg" || mime === "image/jpg" || ext === "jpg" || ext === "jpeg";
+  const mime = mimeOf(item);
+  if (CLAIMED_MIME.has(mime) || CLAIMED_EXT.has(ext)) return true;
+  return UNNAMED_MIME.has(mime) && UNNAMED_EXT.has(ext);
 }
 
+// Pictures are converted once the download has finished.
 chrome.downloads.onCreated.addListener((item) => {
-  if (item.filename) consider(item.id); // usually the name isn't known yet; see onChanged
+  if (item.filename && item.state === "complete") consider(item.id);
 });
 
 chrome.downloads.onChanged.addListener((delta) => {
-  if (delta.filename?.current) consider(delta.id);
   const state = delta.state?.current;
+  if (delta.filename?.current || state === "complete") consider(delta.id);
   if (state === "complete" || state === "interrupted") closeConverterIfIdle();
 });
 
 async function consider(id) {
   if (handling.has(id)) return;
-  const [item] = await chrome.downloads.search({ id });
-  if (!item || !item.filename || item.byExtensionId === chrome.runtime.id) return;
-  const convert = needsJpg(item);
-  if (!convert && !claimsJpeg(item)) return;
   handling.add(id);
-  busy++;
+  busy++; // counted straight away so the converter isn't closed under us
+  let done = false;
+  let name = "";
   try {
-    if (!convert) {
-      // a "JPG": only convert it if its first bytes show it's really a WebP/AVIF/HEIC/GIF
-      const peek = await askConverter({ type: "peek", url: item.finalUrl || item.url }).catch(() => null);
-      if (!SNIFFED_TYPES.has(peek?.type)) return;
-    }
-    await replaceWithJpg(item);
+    const [item] = await chrome.downloads.search({ id });
+    if (!item || item.byExtensionId === chrome.runtime.id || item.state === "interrupted") { done = true; return; }
+    if (!item.filename || item.state !== "complete") return; // not finished yet: comes back on "complete"
+    done = true;
+    name = baseName(item.filename);
+    const convert = needsJpg(item);
+    if (!convert && !worthALook(item)) return;
+    await replaceWithJpg(item, convert ? "convert" : "check");
   } catch (err) {
-    console.warn("Auto JPG: couldn't convert", baseName(item.filename), err);
+    console.warn("Auto JPG: couldn't convert", name, err);
   } finally {
+    if (!done) handling.delete(id);
     busy--;
     closeConverterIfIdle();
   }
 }
 
-async function replaceWithJpg(item) {
+// "C:\Users\me\Downloads\my pic.avif" -> "file:///C:/Users/me/Downloads/my%20pic.avif"
+function fileUrl(fullPath) {
+  const parts = fullPath.replace(/\\/g, "/").split("/");
+  if (parts[0] === "") parts.shift(); // "/home/me/..." on Linux/Mac
+  return "file:///" + parts.map((p, i) => (i === 0 && /^[a-z]:$/i.test(p) ? p : encodeURIComponent(p))).join("/");
+}
+
+const canReadFiles = () =>
+  new Promise((resolve) => {
+    try { chrome.extension.isAllowedFileSchemeAccess((ok) => resolve(!!ok)); } catch (_) { resolve(false); }
+  });
+
+// Read the downloaded file itself, so it's exactly the picture you got. Only if that
+// isn't possible, fetch it from the site again.
+async function convertDownload(item, mode) {
+  const tries = [];
+  if (item.exists !== false && (await canReadFiles())) tries.push({ url: fileUrl(item.filename), local: true });
+  const web = item.finalUrl || item.url;
+  if (web) tries.push({ url: web, local: false });
+
+  let result = { ok: false, error: "nowhere to read it from" };
+  for (const t of tries) {
+    for (let attempt = 0; attempt < (t.local ? 3 : 1); attempt++) {
+      if (mode === "check") {
+        // look at the first bytes before reading the whole file
+        const peek = await askConverter({ type: "peek", url: t.url }).catch(() => null);
+        if (peek?.type && !peek.convertible) return { ok: false, skip: true };
+        if (!peek?.type) {
+          result = { ok: false, error: "couldn't look at it" };
+          if (t.local && attempt < 2) { await new Promise((r) => setTimeout(r, 400)); continue; }
+          break;
+        }
+      }
+      result = await askConverter({ type: "convert", url: t.url, check: mode === "check" })
+        .catch((e) => ({ ok: false, error: String(e) }));
+      if (result.ok || result.skip || result.final) return result;
+      if (t.local && attempt < 2) await new Promise((r) => setTimeout(r, 400)); // file may still be locked (virus scan)
+    }
+  }
+  return result;
+}
+
+async function replaceWithJpg(item, mode) {
   const name = baseName(item.filename);
-  const result = await askConverter({ type: "convert", url: item.finalUrl || item.url });
+  const result = await convertDownload(item, mode);
+  if (result.skip) return; // a real JPG/PNG, or not a picture
   if (!result?.ok) {
     console.log("Auto JPG: kept original", name, "-", result?.error);
     return;
@@ -97,7 +153,7 @@ async function replaceWithJpg(item) {
 
   const relative = relativeToDownloads(item.filename);
   const jpgName = toJpgName(relative ?? name);
-  const sameName = toJpgName(name).toLowerCase() === name.toLowerCase(); // e.g. a WebP called .jpg
+  const sameName = toJpgName(name).toLowerCase() === name.toLowerCase(); // e.g. an AVIF called .jpg
 
   if (sameName) await removeOriginal(item.id); // free up the name first
   await chrome.downloads.download({
@@ -105,7 +161,7 @@ async function replaceWithJpg(item) {
     filename: jpgName,
     conflictAction: "uniquify",
     // saved somewhere outside Downloads with "Save as": ask where the JPG should go
-    ...(relative ? {} : { saveAs: true }),
+    saveAs: !relative,
   });
   if (!sameName) await removeOriginal(item.id);
 }
@@ -137,8 +193,15 @@ async function ensureConverter() {
 }
 
 async function askConverter(message) {
-  await ensureConverter();
-  return chrome.runtime.sendMessage({ target: "auto-jpg-offscreen", ...message });
+  for (let attempt = 0; ; attempt++) {
+    await ensureConverter();
+    try {
+      return await chrome.runtime.sendMessage({ target: "auto-jpg-offscreen", ...message });
+    } catch (e) {
+      // the hidden page was closing just as we asked: open it again once
+      if (attempt > 0 || !/establish connection|receiving end/i.test(String(e))) throw e;
+    }
+  }
 }
 
 // Close the hidden page once no conversions or JPG downloads are running.

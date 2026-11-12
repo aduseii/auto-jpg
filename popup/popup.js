@@ -49,6 +49,8 @@ async function load() {
   $("autoUpdate").checked = autoUpdate;
   const { update, justUpdated } = await chrome.storage.local.get({ update: null, justUpdated: null });
   showUpdate(update, justUpdated);
+  // Auto JPG converts the file you downloaded; without file access it has to fetch it again.
+  chrome.extension.isAllowedFileSchemeAccess((ok) => { $("fileAccess").hidden = !!ok; });
 }
 
 $("checkNow").addEventListener("click", async () => {

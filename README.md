@@ -42,10 +42,11 @@ The Photos app in Windows 11 can save edits back into **JPG, PNG, BMP, TIFF and 
 | JPG, PNG, BMP, TIFF, `.jfif`, videos, documents | left exactly as they are |
 
 - The JPG gets the same name, in the same folder. The original is removed from your disk and from the downloads list.
-- **Disguised files** are caught too: a WebP, AVIF or HEIC that a site named `.jpg` is checked (only its first few bytes are read) and converted. Real JPGs are never touched.
+- **It converts the file you downloaded,** once the download finishes, so it's exactly the picture you got. Sites that block other pages from using their pictures, need you signed in, or use links that only work once don't stop it. (Extensions installed with **Load unpacked** may read your downloaded files. If you've switched off *Allow access to file URLs* in Auto JPG's Details, it downloads the picture from the site again instead, and the popup tells you some pictures may stay unconverted.)
+- **Disguised files** are caught too: a WebP, AVIF or HEIC that a site named `.jpg` or `.png`, or sent with no type at all, is checked (only its first few bytes are read) and converted. Real JPGs and PNGs are never touched.
 - **Transparent pictures** get a white background (JPG can't be see-through).
 - **Works with other extensions,** such as Quick Image Saver: their pictures are converted too, and the file names and folders they choose are kept.
-- **If a site refuses** to hand the picture over a second time, the original download is left as it is.
+- **If a picture can't be read**, the original download is left as it is.
 - **"Save image as" outside Downloads:** the extension asks where to put the JPG.
 
 You may see the original in the downloads list for a moment before the JPG replaces it.
